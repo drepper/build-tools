@@ -9,9 +9,9 @@ precise_time() {
   date +%s.%N
 }
 
-local f=$(precise_time)
+f=$(precise_time)
 ${AR:-ar} "$@"
-local ret=$?
+ret=$?
 
 echo "$f $(precise_time) $2" >> "$MAKE_TIMING_OUTPUT"
 exit $ret

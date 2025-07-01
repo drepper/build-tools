@@ -9,11 +9,11 @@ precise_time() {
   date +%s.%N
 }
 
-local f=$(precise_time)
+f=$(precise_time)
 "$@"
-local ret=$?
-local t=$(precise_time)
-local target=$(echo "$@" | sed 's/.* -o *\([^[:space:]]*\).*/\1/')
+ret=$?
+t=$(precise_time)
+target=$(echo "$@" | sed 's/.* -o *\([^[:space:]]*\).*/\1/')
 
 echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
 exit $ret
