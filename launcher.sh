@@ -6,7 +6,7 @@ if [ -z "$MAKE_TIMING_OUTPUT" ]; then
 fi
 
 precise_time() {
-  return $(date +%s.%N)
+  date +%s.%N
 }
 
 local f=$(precise_time)
