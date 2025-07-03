@@ -231,7 +231,7 @@ def main(argv: List[str]) -> None:
         if c[1] - c[0] <= median:
             fg = f'\x1b[38;2;{int(255 * (c[1] - c[0]) / median)};255;0m'
         else:
-            fg = f'\x1b[38;2;255;{min(255, int(255 * (1 - (c[1] - c[0] - median) / median)))};0m'
+            fg = f'\x1b[38;2;255;{max(0, int(255 * (1 - (c[1] - c[0] - median) / median)))};0m'
         print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
 
     totalfmt = fmttime(to_ns(duration))
