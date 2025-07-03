@@ -13,7 +13,9 @@ f=$(precise_time)
 "$@"
 ret=$?
 t=$(precise_time)
-target=$(echo "$@" | sed 's/.* -o *\([^[:space:]]*\).*/\1/')
+target=$(echo "$@" | sed -n 's/\(^\|.* \)-o *\([^[:space:]]*\).*/\2/p')
 
-echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
+if [ "$target" ]; then
+  echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
+fi
 exit $ret
