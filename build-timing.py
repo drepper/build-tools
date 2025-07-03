@@ -113,15 +113,17 @@ def getcoord(m, start: float, stepsize: float) -> Tuple[int, int, str, int]:
     return map_to_step(m[0], start, stepsize), map_to_step(m[1], start, stepsize), m[2], to_ns(m[1] - m[0])
 
 
-def compute_utilization(coords, nsteps: int) -> Tuple[int, float]:
+def compute_utilization(coords, nsteps: int) -> Tuple[int, float, int]:
     busy = [False] * nsteps
     efficient = [0] * nsteps
+    longest = 0
 
     for c in coords:
         efficient[c[0]:c[1]] += map(int, busy[c[0]:c[1]])
         busy[c[0]:c[1]] = [True] * (c[1] - c[0])
+        longest = max(longest, c[1] - c[0])
 
-    return sum(busy), sum(efficient) / nsteps
+    return sum(busy), sum(efficient) / nsteps, longest
 
 
 def fmttime(t: int) -> str:
@@ -218,7 +220,7 @@ def main(argv: List[str]) -> None:
 
     coords = list(map(lambda m: getcoord(m, start, stepsize), meas))
 
-    tbusy, efficiency = compute_utilization(coords, nsteps)
+    tbusy, efficiency, longest = compute_utilization(coords, nsteps)
 
     title = " Build Report "
     nfront = (COLUMNS - len(title)) // 2
@@ -227,7 +229,7 @@ def main(argv: List[str]) -> None:
 
     for i, c in enumerate(coords):
         bg = COLOR_BG if i % 2 else ''
-        l = min(1.0, (c[1] - c[0]) / tbusy)
+        l = min(1.0, (c[1] - c[0]) / longest)
         print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], l, labelwidth, bg)}\x1b[0K\x1b[0m')
 
     totalfmt = fmttime(to_ns(duration))
