@@ -161,15 +161,13 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
     tailfrac = to_t % NFRAC
     ntailfrac = 1 if pos_leadfrac != pos_tailfrac and tailfrac > 0 else 0
 
-    color_off = '\x1b[0m'
-
     if len(tfmt) <= nfull:
         res = f'{"":{pos_leadfrac}}'
         res += fg
         res += INITIAL_FRACTION[leadfrac]
         res += f'\x1b[7m{tfmt:^{nfull}}\x1b[27m'
         res += TRAILING_FRACTION[tailfrac]
-        res += color_off + bg
+        res += COLOR_OFF + bg
     elif labelwidth + 1 + pos_leadfrac + nleadfrac + nfull + ntailfrac + 1 + len(tfmt) > COLUMNS:
         res = f'{tfmt:>{pos_leadfrac-1}} '
         res += fg
@@ -185,7 +183,7 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
             res += INITIAL_FRACTION[leadfrac]
             res += '█' * nfull
             res += TRAILING_FRACTION[tailfrac]
-        res += color_off + bg
+        res += COLOR_OFF + bg
     else:
         res = f'{"":{pos_leadfrac}}'
         res += fg
@@ -201,7 +199,7 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
             res += INITIAL_FRACTION[leadfrac]
             res += '█' * nfull
             res += TRAILING_FRACTION[tailfrac]
-        res += color_off + bg
+        res += COLOR_OFF + bg
         res += f' {tfmt}'
     return res
 
