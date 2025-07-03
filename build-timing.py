@@ -102,11 +102,11 @@ def run(argv: List[str]) -> Tuple[float, float, int, List[Tuple[float,float,str]
 
 
 def map_to_step(t: float, start: float, stepsize: float) -> int:
-    return int((t - start) / stepsize)
+    return round((t - start) / stepsize)
 
 
 def to_ns(t: float) -> int:
-    return int(1_000_000_000 * t)
+    return round(1_000_000_000 * t)
 
 
 def getcoord(m, start: float, stepsize: float) -> Tuple[int, int, str, int]:
@@ -155,7 +155,7 @@ def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str)
     nfull = max(0, (to_t - (from_t + leadfrac)) // NFRAC)
 
     tailfrac = to_t % NFRAC
-    ntailfrac = 1 if tailfrac > 0 else 0
+    ntailfrac = 1 if pos_leadfrac != pos_tailfrac and tailfrac > 0 else 0
 
     color_on = f'\x1b[38;2;{int(255 * l)};{int(255*(1-l))};0m'
     color_off = '\x1b[0m'
@@ -170,8 +170,14 @@ def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str)
     elif labelwidth + 1 + pos_leadfrac + nleadfrac + nfull + ntailfrac + 1 + len(tfmt) > COLUMNS:
         res = f'{tfmt:>{pos_leadfrac-1}} '
         res += color_on
-        if leadfrac != 0 and pos_leadfrac == pos_tailfrac and tailfrac > 1:
-            res += SMALL_FRACTION[leadfrac]
+        if pos_leadfrac == pos_tailfrac:
+            if leadfrac == 0:
+                res += TRAILING_FRACTION[max(1, tailfrac)]
+            elif tailfrac == NFRAC - 1:
+                # This means we are drawing ⅛th too long, smaller error than other possibilities.
+                res += INITIAL_FRACTION[leadfrac]
+            else:
+                res += SMALL_FRACTION[leadfrac]
         else:
             res += INITIAL_FRACTION[leadfrac]
             res += '█' * nfull
@@ -180,8 +186,14 @@ def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str)
     else:
         res = f'{"":{pos_leadfrac}}'
         res += color_on
-        if leadfrac != 0 and pos_leadfrac == pos_tailfrac and tailfrac > 1:
-            res += SMALL_FRACTION[leadfrac]
+        if pos_leadfrac == pos_tailfrac:
+            if leadfrac == 0:
+                res += TRAILING_FRACTION[max(1, tailfrac)]
+            elif tailfrac == NFRAC - 1:
+                # This means we are drawing ⅛th too long, smaller error than other possibilities.
+                res += INITIAL_FRACTION[leadfrac]
+            else:
+                res += SMALL_FRACTION[leadfrac]
         else:
             res += INITIAL_FRACTION[leadfrac]
             res += '█' * nfull
