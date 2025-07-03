@@ -116,14 +116,16 @@ def getcoord(m, start: float, stepsize: float) -> Tuple[int, int, str, int]:
 def compute_utilization(coords, nsteps: int) -> Tuple[int, float, int]:
     busy = [False] * nsteps
     efficient = [0] * nsteps
-    longest = 0
+    ts = []
 
     for c in coords:
         efficient[c[0]:c[1]] += map(int, busy[c[0]:c[1]])
         busy[c[0]:c[1]] = [True] * (c[1] - c[0])
-        longest = max(longest, c[1] - c[0])
+        ts.append(c[1] - c[0])
 
-    return sum(busy), sum(efficient) / nsteps, longest
+    sorted(ts)
+
+    return sum(busy), sum(efficient) / nsteps, ts[len(ts) // 2]
 
 
 def fmttime(t: int) -> str:
@@ -145,7 +147,7 @@ def fmttime(t: int) -> str:
     return f'{s}{tf:.{frac}f}{["n","µ","m",""][mor]}s'
 
 
-def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str) -> str:
+def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) -> str:
     tfmt = fmttime(total_t).strip()
 
     pos_leadfrac = from_t // NFRAC
@@ -159,19 +161,18 @@ def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str)
     tailfrac = to_t % NFRAC
     ntailfrac = 1 if pos_leadfrac != pos_tailfrac and tailfrac > 0 else 0
 
-    color_on = f'\x1b[38;2;{int(255 * l)};{int(255*(1-l))};0m'
     color_off = '\x1b[0m'
 
     if len(tfmt) <= nfull:
         res = f'{"":{pos_leadfrac}}'
-        res += color_on
+        res += fg
         res += INITIAL_FRACTION[leadfrac]
         res += f'\x1b[7m{tfmt:^{nfull}}\x1b[27m'
         res += TRAILING_FRACTION[tailfrac]
         res += color_off + bg
     elif labelwidth + 1 + pos_leadfrac + nleadfrac + nfull + ntailfrac + 1 + len(tfmt) > COLUMNS:
         res = f'{tfmt:>{pos_leadfrac-1}} '
-        res += color_on
+        res += fg
         if pos_leadfrac == pos_tailfrac:
             if leadfrac == 0:
                 res += TRAILING_FRACTION[max(1, tailfrac)]
@@ -187,7 +188,7 @@ def bar(from_t: int, to_t: int, total_t:int, l: float, labelwidth: int, bg: str)
         res += color_off + bg
     else:
         res = f'{"":{pos_leadfrac}}'
-        res += color_on
+        res += fg
         if pos_leadfrac == pos_tailfrac:
             if leadfrac == 0:
                 res += TRAILING_FRACTION[max(1, tailfrac)]
@@ -220,7 +221,7 @@ def main(argv: List[str]) -> None:
 
     coords = list(map(lambda m: getcoord(m, start, stepsize), meas))
 
-    tbusy, efficiency, longest = compute_utilization(coords, nsteps)
+    tbusy, efficiency, median = compute_utilization(coords, nsteps)
 
     title = " Build Report "
     nfront = (COLUMNS - len(title)) // 2
@@ -229,8 +230,11 @@ def main(argv: List[str]) -> None:
 
     for i, c in enumerate(coords):
         bg = COLOR_BG if i % 2 else ''
-        l = min(1.0, (c[1] - c[0]) / longest)
-        print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], l, labelwidth, bg)}\x1b[0K\x1b[0m')
+        if c[1] - c[0] <= median:
+            fg = f'\x1b[38;2;{int(255 * (c[1] - c[0]) / median)};255;0m'
+        else:
+            fg = f'\x1b[38;2;255;{int(255 * (1 - (c[1] - c[0] - median) / median))};0m'
+        print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
 
     totalfmt = fmttime(to_ns(duration))
     nlinefront = (barwidth - (len(totalfmt) + 2) - 2) // 2
