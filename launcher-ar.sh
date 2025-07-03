@@ -12,6 +12,10 @@ precise_time() {
 f=$(precise_time)
 ${AR:-ar} "$@"
 ret=$?
+t=$(precise_time)
 
-echo "$f $(precise_time) $2" >> "$MAKE_TIMING_OUTPUT"
+if [ "$2" ]; then
+  target=$(echo "$2" | sed "s|^$PWD/||")
+  echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
+fi
 exit $ret

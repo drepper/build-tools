@@ -14,11 +14,9 @@ ${FLEX:-flex} "$@"
 ret=$?
 t=$(precise_time)
 target=$(echo "$@" | sed -n 's/\(^\|.* \)-o *\([^[:space:]]*\).*/\2/p')
-echo "----" >> /tmp/BBB
-echo "$@" >> /tmp/BBB
-echo "$target" >> /tmp/BBB
 
 if [ "$target" ]; then
+  target=$(echo "$target" | sed "s|^$PWD/||")
   echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
 fi
 exit $ret

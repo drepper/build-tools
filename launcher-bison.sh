@@ -14,11 +14,9 @@ ${BISON:-bison} "$@"
 ret=$?
 t=$(precise_time)
 target=$(echo "$@" | sed -n 's/\(^\|.* \)-o *\([^[:space:]]*\).*/\2/p')
-echo "----" >> /tmp/AAA
-echo "$@" >> /tmp/AAA
-echo "$target" >> /tmp/AAA
 
 if [ "$target" ]; then
+  target=$(echo "$target" | sed "s|^$PWD/||")
   echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
 fi
 exit $ret
