@@ -72,11 +72,32 @@ def run(argv: List[str]) -> Tuple[float, float, int, List[Tuple[float,float,str]
                 path = sys.argv[i + 1][2:]
             break
     if not path:
-        path = pathlib.Path('build')
-        if path:
-            builddir = ['-C', 'build']
-        else:
+        possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
+        if possible:
+            if any([f for f in possible if f.name != 'Makefile' and f.name != 'build.ninja']):
+                print('Ninja Multi-Config not supported')
+                sys.exit(1)
+            if len(possible) != 1:
+                print('both make and ninja build possible')
+                sys.exit(1)
             path = pathlib.Path('')
+        else:
+            possible = list(pathlib.Path('.').glob('*/Makefile')) + list(pathlib.Path('.').glob('*/build*.ninja'))
+            if not possible:
+                print('no build directory found')
+                sys.exit(1)
+            if any([f for f in possible if f.name != 'Makefile' and f.name != 'build.ninja']):
+                print('Ninja Multi-Config not supported')
+                sys.exit(1)
+            if len(possible) != 1:
+                builddirs = set([f.parent for f in possible])
+                if len(builddirs) != 1:
+                    print(f'more than one build directory found: {", ".join([str(f) for f in builddirs])}')
+                else:
+                    print('both make and ninja build possible')
+                sys.exit(1)
+            path = possible[0].parent
+            builddir = ['-C', path]
 
     if (path / pathlib.Path("Makefile")).exists():
         generator = os.getenv("MAKE") or 'make'
@@ -221,10 +242,8 @@ def main(argv: List[str]) -> None:
 
     tbusy, efficiency, median = compute_utilization(coords, nsteps)
 
-    title = " Build Report "
-    nfront = (COLUMNS - len(title)) // 2
-    nback = COLUMNS - len(title) - nfront
-    print(f'{"🮁"*nfront}{COLOR_EMPH}{title}{COLOR_OFF}{"🮁"*nback}\n')
+    title = f" {COLOR_EMPH}Build Report{COLOR_OFF} "
+    print(f'{title:🮁^{COLUMNS + len(COLOR_EMPH) + len(COLOR_OFF)}s}')
 
     for i, c in enumerate(coords):
         bg = COLOR_BG if i % 2 else ''
@@ -244,4 +263,8 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    import signal
+    try:
+        main(sys.argv)
+    except KeyboardInterrupt:
+        sys.exit(128 + signal.SIGINT)
