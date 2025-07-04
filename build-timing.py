@@ -46,6 +46,9 @@ SMALL_FRACTION = [
     '🭰',
     '▏',
 ]
+# We do not use reverse text most of the time but instead the full block.
+FULL = '█'
+
 
 assert len(TRAILING_FRACTION) == len(INITIAL_FRACTION)
 assert len(TRAILING_FRACTION) == len(SMALL_FRACTION)
@@ -202,7 +205,7 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
                 res += SMALL_FRACTION[leadfrac]
         else:
             res += INITIAL_FRACTION[leadfrac]
-            res += '█' * nfull
+            res += FULL * nfull
             res += TRAILING_FRACTION[tailfrac]
         res += COLOR_OFF + bg
     else:
@@ -218,7 +221,7 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
                 res += SMALL_FRACTION[leadfrac]
         else:
             res += INITIAL_FRACTION[leadfrac]
-            res += '█' * nfull
+            res += FULL * nfull
             res += TRAILING_FRACTION[tailfrac]
         res += COLOR_OFF + bg
         res += f' {tfmt}'
@@ -253,10 +256,8 @@ def main(argv: List[str]) -> None:
             fg = f'\x1b[38;2;255;{max(0, int(255 * (1 - (c[1] - c[0] - median) / median)))};0m'
         print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
 
-    totalfmt = fmttime(to_ns(duration))
-    nlinefront = (barwidth - (len(totalfmt) + 2) - 2) // 2
-    nlineback = barwidth - (len(totalfmt) + 2) - 2 - nlinefront
-    print(f'{" "*labelwidth} ◀{"─"*nlinefront} {COLOR_EMPH}{totalfmt}{COLOR_OFF} {"─"*nlineback}▶')
+    totalfmt = f' {COLOR_EMPH}{fmttime(to_ns(duration))}{COLOR_OFF} '
+    print(f'{" "*labelwidth} ◀{totalfmt:─^{barwidth - 2 + len(COLOR_EMPH) + len(COLOR_OFF)}}▶')
 
     print(f'{"overhead":>{labelwidth}} {COLOR_EMPH}{percent(1 - tbusy / nsteps)}%{COLOR_OFF}')
     print(f'{"efficiency":>{labelwidth}} {COLOR_EMPH}{percent(efficiency)}%{COLOR_OFF}')
