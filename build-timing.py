@@ -137,7 +137,7 @@ def getcoord(m, start: float, stepsize: float) -> Tuple[int, int, str, int]:
     return map_to_step(m[0], start, stepsize), map_to_step(m[1], start, stepsize), m[2], to_ns(m[1] - m[0])
 
 
-def compute_utilization(coords, nsteps: int) -> Tuple[int, float, int]:
+def compute_utilization(coords, nsteps: int) -> Tuple[int, float, float]:
     busy = [False] * nsteps
     efficient = [0] * nsteps
     ts = []
@@ -147,9 +147,11 @@ def compute_utilization(coords, nsteps: int) -> Tuple[int, float, int]:
         busy[c[0]:c[1]] = [True] * (c[1] - c[0])
         ts.append(c[1] - c[0])
 
-    sorted(ts)
+    ts.sort()
+    lts = len(ts) // 2
+    median = (ts[lts] + ts[~lts]) / 2
 
-    return sum(busy), sum(efficient) / nsteps, ts[len(ts) // 2]
+    return sum(busy), sum(efficient) / nsteps, median
 
 
 def fmttime(t: int) -> str:
