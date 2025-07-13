@@ -15,7 +15,6 @@ ret=$?
 t=$(precise_time)
 
 if [ "$2" ]; then
-  target=$(echo "$2" | sed "s|^$PWD/||")
-  echo "$f $t $target" >> "$MAKE_TIMING_OUTPUT"
+  echo "$f $t ${target/#$PWD\//}" >> "$MAKE_TIMING_OUTPUT"
 fi
 exit $ret
