@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright © 2025 Ulrich Drepper
 # SPDX-License-Identifier: CC-BY-NC-ND-4.0
-if [ -z "$MAKE_TIMING_OUTPUT" ]; then
+if [[ -z "${MAKE_TIMING_OUTPUT}" ]]; then
   exec ${AR:-ar} "$@"
 fi
 
@@ -14,7 +14,7 @@ ${AR:-ar} "$@"
 ret=$?
 t=$(precise_time)
 
-if [ "$2" ]; then
-  echo "$f $t ${target/#$PWD\//}" >> "$MAKE_TIMING_OUTPUT"
+if [[ -n "$2" ]]; then
+  echo "${f} ${t} ${2/#${PWD}\//}" >> "${MAKE_TIMING_OUTPUT}"
 fi
-exit $ret
+exit "${ret}"

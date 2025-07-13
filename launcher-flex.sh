@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright © 2025 Ulrich Drepper
 # SPDX-License-Identifier: CC-BY-NC-ND-4.0
-if [ -z "$MAKE_TIMING_OUTPUT" ]; then
+if [[ -z "${MAKE_TIMING_OUTPUT}" ]]; then
   exec ${FLEX:-flex} "$@"
 fi
 
@@ -15,7 +15,7 @@ ret=$?
 t=$(precise_time)
 target=$(echo "$@" | sed -n 's/\(^\|.* \)-o *\([^[:space:]]*\).*/\2/p')
 
-if [ "$target" ]; then
-  echo "$f $t ${target/#$PWD\//}" >> "$MAKE_TIMING_OUTPUT"
+if [[ -n "${target}" ]]; then
+  echo "${f} ${t} ${target/#${PWD}\//}" >> "${MAKE_TIMING_OUTPUT}"
 fi
-exit $ret
+exit "${ret}"
