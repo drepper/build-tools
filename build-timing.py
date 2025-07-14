@@ -61,83 +61,89 @@ COLOR_OFF = '\x1b[0m'
 COLUMNS, _ = os.get_terminal_size()
 
 
-def run(argv: List[str]) -> Tuple[float, float, int, List[Tuple[float,float,str]]]:
-    tf = tempfile.NamedTemporaryFile("w+")
-
-    path = None
-    builddir = []
-    for i, a in enumerate(sys.argv[1:]):
-        if a.startswith('-C'):
-            if a == '-C':
-                if i + 2 < len(sys.argv):
-                    path = sys.argv[i + 2]
-            else:
-                path = sys.argv[i + 1][2:]
-            break
-    if not path:
-        possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
-        if possible:
-            if any([f for f in possible if f.name != 'Makefile' and f.name != 'build.ninja']):
-                print('Ninja Multi-Config not supported')
-                sys.exit(1)
-            if len(possible) != 1:
-                print('both make and ninja build possible')
-                sys.exit(1)
-            path = pathlib.Path('')
-        else:
-            possible = list(pathlib.Path('.').glob('*/Makefile')) + list(pathlib.Path('.').glob('*/build*.ninja'))
-            if not possible:
-                print('no build directory found')
-                sys.exit(1)
-            if any([f for f in possible if f.name != 'Makefile' and f.name != 'build.ninja']):
-                print('Ninja Multi-Config not supported')
-                sys.exit(1)
-            if len(possible) != 1:
-                builddirs = set([f.parent for f in possible])
-                if len(builddirs) != 1:
-                    print(f'more than one build directory found: {", ".join([str(f) for f in builddirs])}')
+def run(argv: List[str]) -> List[Tuple[float,float,str]]:
+    """Run the build process, instructing the launchers to record start and end time for each
+    built file.  Try to be clever and determine automatically which subdir (if any) to run the
+    build process in and what generator to use"""
+    with tempfile.NamedTemporaryFile("w+") as tf:
+        path = None
+        possible = []
+        builddir = []
+        for i, a in enumerate(argv):
+            if a.startswith('-C'):
+                if a == '-C':
+                    if i + 1 < len(argv):
+                        path = sys.argv[i + 1]
                 else:
-                    print('both make and ninja build possible')
-                sys.exit(1)
+                    path = pathlib.Path(argv[i][2:])
+                    possible = list(path.glob('Makefile')) + list(path.glob('build*.ninja'))
+                break
+        if not path:
+            possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
+            if not possible:
+                possible = list(pathlib.Path('.').glob('*/Makefile')) + list(pathlib.Path('.').glob('*/build*.ninja'))
+                if not possible:
+                    print('*** no build directory found')
+                    sys.exit(1)
             path = possible[0].parent
-            builddir = ['-C', path]
+            if path != pathlib.Path(''):
+                builddir = ['-C', path]
+        if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
+            print('*** Ninja Multi-Config not supported')
+            sys.exit(1)
+        if len(possible) != 1:
+            builddirs = set(f.parent for f in possible)
+            if len(builddirs) != 1:
+                print(f'*** more than one build directory found: {", ".join([str(f) for f in builddirs])}')
+            else:
+                print('*** both make and ninja build possible')
+            sys.exit(1)
 
-    if (path / pathlib.Path("Makefile")).exists():
-        generator = os.getenv("MAKE") or 'make'
-    elif (path / pathlib.Path("build.ninja")).exists():
-        generator = os.getenv("NINJA") or 'ninja'
-    else:
-        print(f'cannot determine generator for building in {path}')
-        sys.exit(1)
+        if possible[0].name == 'Makefile':
+            generator = os.getenv("MAKE") or 'make'
+        elif possible[0].name == 'build.ninja':
+            generator = os.getenv("NINJA") or 'ninja'
+        else:
+            print(f'*** cannot determine generator for building in {path}')
+            sys.exit(1)
 
-    r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + builddir + argv)
-    if r != 0:
-        sys.exit(r)
+        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + builddir + argv)
+        if r != 0:
+            sys.exit(r)
 
-    meas = [(float(l[0]), float(l[1]), l[2]) for l in [l.split() for l in tf.readlines()]]
-    if not meas:
-        sys.exit(0)
+        return [(float(l[0]), float(l[1]), l[2]) for l in [l.split() for l in tf.readlines()]]
 
+
+def get_limits(meas: List[Tuple[float, float, str]]) -> Tuple[float, float, int]:
+    """Determine start and end time for the recordings and the longest output file name."""
     start = min(meas, key=lambda e: e[0])[0]
     end = max(meas, key=lambda e: e[1])[1]
     labelmaxlen = min(len(max(meas, key=lambda e: len(e[2]))[2]), COLUMNS // 3)
 
-    return start, end - start, labelmaxlen, sorted(meas, key=lambda e: e[0])
+    return start, end - start, labelmaxlen
 
 
 def map_to_step(t: float, start: float, stepsize: float) -> int:
+    """Compute index from time value based on precomputed start time and resolution."""
     return round((t - start) / stepsize)
 
 
 def to_ns(t: float) -> int:
+    """Compute integer nanosecond value from floating-point seconds."""
     return round(1_000_000_000 * t)
 
 
-def getcoord(m, start: float, stepsize: float) -> Tuple[int, int, str, int]:
+def getcoord(m: Tuple[float, float, str], start: float, stepsize: float) -> Tuple[int, int, str, int]:
+    """Translate the data recorded by the launchers for one tool to indices for the graph and duration times."""
     return map_to_step(m[0], start, stepsize), map_to_step(m[1], start, stepsize), m[2], to_ns(m[1] - m[0])
 
 
-def compute_utilization(coords, nsteps: int) -> Tuple[int, float, float]:
+def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) -> Tuple[int, float, float]:
+    """The returned tuple contains a number of values computed from the individual tool runtimes mapped to the
+    graph grid:
+    - the number of time steps which have any activity
+    - how much parallel activity happened at each time step
+    - the median time of the tool runtimes"""
     busy = [False] * nsteps
     efficient = [0] * nsteps
     ts = []
@@ -173,7 +179,10 @@ def fmttime(t: int) -> str:
     return f'{s}{tf:.{frac}f}{["n","µ","m",""][mor]}s'
 
 
-def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) -> str:
+def get_bar_string(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) -> str:
+    """Return a string using Unicode block elements representing a bar with the given start and
+    end position.  The horizontal resolution is NFRAC (= 8) steps per characters.
+    Note that for durations less than a NFRAC steps not all values can be correctly represented"""
     tfmt = fmttime(total_t).strip()
 
     pos_leadfrac = from_t // NFRAC
@@ -231,11 +240,16 @@ def bar(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str, bg: str) 
 
 
 def percent(v: float) -> int:
+    """Map floating point value to integer percent value"""
     return int(v * 100 + 0.5)
 
 
 def main(argv: List[str]) -> None:
-    start, duration, labelwidth, meas = run(sys.argv[1:])
+    meas = run(argv)
+    if not meas:
+        sys.exit(0)
+
+    start, duration, labelwidth = get_limits(meas)
 
     barwidth = COLUMNS - 1 - labelwidth
 
@@ -256,7 +270,7 @@ def main(argv: List[str]) -> None:
             fg = f'\x1b[38;2;{int(255 * (c[1] - c[0]) / median)};255;0m'
         else:
             fg = f'\x1b[38;2;255;{max(0, int(255 * (1 - (c[1] - c[0] - median) / median)))};0m'
-        print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {bar(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
+        print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {get_bar_string(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
 
     totalfmt = f' {COLOR_EMPH}{fmttime(to_ns(duration))}{COLOR_OFF} '
     print(f'{" "*labelwidth} ◀{totalfmt:─^{barwidth - 2 + len(COLOR_EMPH) + len(COLOR_OFF)}}▶')
@@ -268,6 +282,6 @@ def main(argv: List[str]) -> None:
 if __name__ == '__main__':
     import signal
     try:
-        main(sys.argv)
+        main(sys.argv[1:])
     except KeyboardInterrupt:
         sys.exit(128 + signal.SIGINT)
