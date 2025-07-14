@@ -132,7 +132,8 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
             sys.exit(r)
 
         name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else id
-        res = [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]].sort()
+        res = [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]]
+        res.sort()
         return res
 
 
