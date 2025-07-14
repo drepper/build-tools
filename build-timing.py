@@ -72,11 +72,12 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
         for i, a in enumerate(argv):
             if a.startswith('-C'):
                 if a == '-C':
-                    if i + 1 < len(argv):
-                        path = sys.argv[i + 1]
+                    if i + 1 >= len(argv):
+                        break
+                    path = pathlib.Path(argv[i + 1])
                 else:
                     path = pathlib.Path(argv[i][2:])
-                    possible = list(path.glob('Makefile')) + list(path.glob('build*.ninja'))
+                possible = list(path.glob('Makefile')) + list(path.glob('build*.ninja'))
                 break
         if not path:
             possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
