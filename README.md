@@ -6,7 +6,7 @@ This is just a collection of tools which can be used in projects using `cmake` o
 the invoked programs is tracked and then shown mapped to the total time of the
 build process.
 
-![example build](screenshot.png)
+![example build](extra/screenshot.png)
 
 This screenshot shows the build of a small project.  `cmake` was instructed to use
 `ninja` and on this occasion just three files had to be recompiled.  After that an
