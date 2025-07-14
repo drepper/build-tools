@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright © 2025 Ulrich Drepper
 # SPDX-License-Identifier: CC-BY-NC-ND-4.0
+import hashlib
 import math
 import operator
 import os
@@ -62,6 +63,16 @@ COLOR_OFF = '\x1b[0m'
 COLUMNS, _ = os.get_terminal_size()
 
 
+def id(s: str) -> str:
+    "Identity function"
+    return s
+
+
+def obs(s: str) -> str:
+    "Obsfucate string"
+    return hashlib.sha256(s.encode()).hexdigest()[:COLUMNS //8]
+
+
 def determine_path(argv: List[str]) -> Tuple[pathlib.Path, List[str]]:
     """Determine automatically which subdir (if any) to run the
     build process in and what generator to use"""
@@ -113,12 +124,14 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
         print(f'*** cannot determine generator for building in {genpath.parent}')
         sys.exit(1)
 
+
     with tempfile.NamedTemporaryFile("w+") as tf:
         r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + builddir + argv)
         if r != 0:
             sys.exit(r)
 
-        return [(float(l[0]), float(l[1]), l[2]) for l in [l.split() for l in tf.readlines()]]
+        name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else id
+        return [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]]
 
 
 def get_limits(meas: List[Tuple[float, float, str]]) -> Tuple[float, float, int]:
