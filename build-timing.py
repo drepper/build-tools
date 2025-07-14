@@ -59,6 +59,8 @@ NFRAC = len(TRAILING_FRACTION)
 COLOR_EMPH = '\x1b[38;5;226m'
 COLOR_BG = '\x1b[48;5;234m'
 COLOR_OFF = '\x1b[0m'
+INVERSE = '\x1b[7m'
+INVERSE_OFF = '\x1b[27m'
 
 COLUMNS, _ = os.get_terminal_size()
 
@@ -73,12 +75,16 @@ def obs(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()[:COLUMNS //8]
 
 
-def determine_path(argv: List[str]) -> Tuple[pathlib.Path, List[str]]:
-    """Determine automatically which subdir (if any) to run the
-    build process in and what generator to use"""
+def find_buildfile(path: pathlib.Path, all_dirs: bool) -> List[pathlib.Path]:
+    "Find build files (Makefile, build*.ninja) in current or all subdirs."
+    return list(path.glob(f'{'*/' if all_dirs else ''}Makefile')) + list(path.glob(f'{'*/' if all_dirs else ''}build*.ninja'))
+
+
+def determine_path(argv: List[str]) -> pathlib.Path:
+    "Determine automatically which subdir (if any) to run the build process in and what generator to use"
     possible = []
-    builddir = []
     for i, a in enumerate(argv):
+        # This test depends on the fact that both make and ninja use the -C argument to select an alternative build directory.
         if a.startswith('-C'):
             if a == '-C':
                 if i + 1 >= len(argv):
@@ -86,17 +92,13 @@ def determine_path(argv: List[str]) -> Tuple[pathlib.Path, List[str]]:
                 path = pathlib.Path(argv[i + 1])
             else:
                 path = pathlib.Path(argv[i][2:])
-            possible = list(path.glob('Makefile')) + list(path.glob('build*.ninja'))
+            possible = find_buildfile(path, False)
             break
     if not possible:
-        possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
+        possible = find_buildfile(pathlib.Path('.'), False) or find_buildfile(pathlib.Path('.'), True)
         if not possible:
-            possible = list(pathlib.Path('.').glob('*/Makefile')) + list(pathlib.Path('.').glob('*/build*.ninja'))
-            if not possible:
-                print('*** no build directory found')
-                sys.exit(1)
-        if possible[0].parent != pathlib.Path(''):
-            builddir = ['-C', str(possible[0].parent)]
+            print('*** no build directory found')
+            sys.exit(1)
     if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
         print('*** Ninja Multi-Config not supported')
         sys.exit(1)
@@ -108,13 +110,12 @@ def determine_path(argv: List[str]) -> Tuple[pathlib.Path, List[str]]:
             print('*** both make and ninja build possible')
         sys.exit(1)
 
-    return possible[0], builddir
+    return possible[0]
 
 
 def run(argv: List[str]) -> List[Tuple[float,float,str]]:
-    """Run the build process, instructing the launchers to record start and end time for each
-    built file"""
-    genpath, builddir = determine_path(argv)
+    "Run the build process, instructing the launchers to record start and end time for each built file"
+    genpath = determine_path(argv)
 
     if genpath.name == 'Makefile':
         generator = os.getenv("MAKE") or 'make'
@@ -124,9 +125,9 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
         print(f'*** cannot determine generator for building in {genpath.parent}')
         sys.exit(1)
 
-
     with tempfile.NamedTemporaryFile("w+") as tf:
-        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + builddir + argv)
+        c_builddir = [] if genpath.parent == pathlib.Path('') else ['-C', str(genpath.parent)]
+        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + c_builddir + argv)
         if r != 0:
             sys.exit(r)
 
@@ -193,7 +194,7 @@ def fmttime(t: int) -> str:
             return s
     m = math.log10(t)
     mor = int(m / 3)
-    d = 10**(mor * 3)
+    d = 10 ** (mor * 3)
     tf = t / d
     frac = 2 - (int(m) - mor * 3)
     return f'{s}{tf:.{frac}f}{["n","µ","m",""][mor]}s'
@@ -220,7 +221,7 @@ def get_bar_string(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str
         res = f'{"":{pos_leadfrac}}'
         res += fg
         res += INITIAL_FRACTION[leadfrac]
-        res += f'\x1b[7m{tfmt:^{nfull}}\x1b[27m'
+        res += INVERSE + f'{tfmt:^{nfull}}' + INVERSE_OFF
         res += TRAILING_FRACTION[tailfrac]
         res += COLOR_OFF + bg
     elif labelwidth + 1 + pos_leadfrac + nleadfrac + nfull + ntailfrac + 1 + len(tfmt) > COLUMNS:
