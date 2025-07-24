@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 # Copyright © 2025 Ulrich Drepper
 # SPDX-License-Identifier: CC-BY-NC-ND-4.0
+"""Build script with invokes the generator configure for the project.  If the CMakeFiles.txt file
+is appropriately modified by using the provided launcher script the script collects build times
+and in the end shows a timeline for the build process."""
 import hashlib
 import math
 import operator
@@ -65,7 +68,7 @@ INVERSE_OFF = '\x1b[27m'
 COLUMNS, _ = os.get_terminal_size()
 
 
-def id(s: str) -> str:
+def idfct(s: str) -> str:
     "Identity function"
     return s
 
@@ -131,7 +134,7 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
         if r != 0:
             sys.exit(r)
 
-        name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else id
+        name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else idfct
         res = [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]]
         res.sort()
         return res
@@ -268,6 +271,7 @@ def percent(v: float) -> int:
 
 
 def main(argv: List[str]) -> None:
+    """Main function of the script."""
     meas = run(argv)
     if not meas:
         sys.exit(0)
