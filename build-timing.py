@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # Copyright © 2025 Ulrich Drepper
 # SPDX-License-Identifier: CC-BY-NC-ND-4.0
+import hashlib
 import math
+import operator
 import os
 import pathlib
 import subprocess
@@ -57,67 +59,88 @@ NFRAC = len(TRAILING_FRACTION)
 COLOR_EMPH = '\x1b[38;5;226m'
 COLOR_BG = '\x1b[48;5;234m'
 COLOR_OFF = '\x1b[0m'
+INVERSE = '\x1b[7m'
+INVERSE_OFF = '\x1b[27m'
 
 COLUMNS, _ = os.get_terminal_size()
 
 
-def run(argv: List[str]) -> List[Tuple[float,float,str]]:
-    """Run the build process, instructing the launchers to record start and end time for each
-    built file.  Try to be clever and determine automatically which subdir (if any) to run the
-    build process in and what generator to use"""
-    with tempfile.NamedTemporaryFile("w+") as tf:
-        path = None
-        possible = []
-        builddir = []
-        for i, a in enumerate(argv):
-            if a.startswith('-C'):
-                if a == '-C':
-                    if i + 1 < len(argv):
-                        path = sys.argv[i + 1]
-                else:
-                    path = pathlib.Path(argv[i][2:])
-                    possible = list(path.glob('Makefile')) + list(path.glob('build*.ninja'))
-                break
-        if not path:
-            possible = list(pathlib.Path('.').glob('Makefile')) + list(pathlib.Path('.').glob('build*.ninja'))
-            if not possible:
-                possible = list(pathlib.Path('.').glob('*/Makefile')) + list(pathlib.Path('.').glob('*/build*.ninja'))
-                if not possible:
-                    print('*** no build directory found')
-                    sys.exit(1)
-            path = possible[0].parent
-            if path != pathlib.Path(''):
-                builddir = ['-C', path]
-        if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
-            print('*** Ninja Multi-Config not supported')
-            sys.exit(1)
-        if len(possible) != 1:
-            builddirs = set(f.parent for f in possible)
-            if len(builddirs) != 1:
-                print(f'*** more than one build directory found: {", ".join([str(f) for f in builddirs])}')
+def id(s: str) -> str:
+    "Identity function"
+    return s
+
+
+def obs(s: str) -> str:
+    "Obsfucate string"
+    return hashlib.sha256(s.encode()).hexdigest()[:COLUMNS //8]
+
+
+def find_buildfile(path: pathlib.Path, all_dirs: bool) -> List[pathlib.Path]:
+    "Find build files (Makefile, build*.ninja) in current or all subdirs."
+    return list(path.glob(f'{'*/' if all_dirs else ''}Makefile')) + list(path.glob(f'{'*/' if all_dirs else ''}build*.ninja'))
+
+
+def determine_path(argv: List[str]) -> pathlib.Path:
+    "Determine automatically which subdir (if any) to run the build process in and what generator to use"
+    possible = []
+    for i, a in enumerate(argv):
+        # This test depends on the fact that both make and ninja use the -C argument to select an alternative build directory.
+        if a.startswith('-C'):
+            if a == '-C':
+                if i + 1 >= len(argv):
+                    break
+                path = pathlib.Path(argv[i + 1])
             else:
-                print('*** both make and ninja build possible')
+                path = pathlib.Path(argv[i][2:])
+            possible = find_buildfile(path, False)
+            break
+    if not possible:
+        possible = find_buildfile(pathlib.Path('.'), False) or find_buildfile(pathlib.Path('.'), True)
+        if not possible:
+            print('*** no build directory found')
             sys.exit(1)
-
-        if possible[0].name == 'Makefile':
-            generator = os.getenv("MAKE") or 'make'
-        elif possible[0].name == 'build.ninja':
-            generator = os.getenv("NINJA") or 'ninja'
+    if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
+        print('*** Ninja Multi-Config not supported')
+        sys.exit(1)
+    if len(possible) != 1:
+        builddirs = set(f.parent for f in possible)
+        if len(builddirs) != 1:
+            print(f'*** more than one build directory found: {", ".join([str(f) for f in builddirs])}')
         else:
-            print(f'*** cannot determine generator for building in {path}')
-            sys.exit(1)
+            print('*** both make and ninja build possible')
+        sys.exit(1)
 
-        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + builddir + argv)
+    return possible[0]
+
+
+def run(argv: List[str]) -> List[Tuple[float,float,str]]:
+    "Run the build process, instructing the launchers to record start and end time for each built file"
+    genpath = determine_path(argv)
+
+    if genpath.name == 'Makefile':
+        generator = os.getenv("MAKE") or 'make'
+    elif genpath.name == 'build.ninja':
+        generator = os.getenv("NINJA") or 'ninja'
+    else:
+        print(f'*** cannot determine generator for building in {genpath.parent}')
+        sys.exit(1)
+
+    with tempfile.NamedTemporaryFile("w+") as tf:
+        c_builddir = [] if genpath.parent == pathlib.Path('') else ['-C', str(genpath.parent)]
+        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + c_builddir + argv)
         if r != 0:
             sys.exit(r)
 
-        return [(float(l[0]), float(l[1]), l[2]) for l in [l.split() for l in tf.readlines()]]
+        name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else id
+        res = [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]]
+        res.sort()
+        return res
 
 
 def get_limits(meas: List[Tuple[float, float, str]]) -> Tuple[float, float, int]:
     """Determine start and end time for the recordings and the longest output file name."""
-    start = min(meas, key=lambda e: e[0])[0]
-    end = max(meas, key=lambda e: e[1])[1]
+    start = min(meas, key=operator.itemgetter(0))[0]
+    end = max(meas, key=operator.itemgetter(1))[1]
     labelmaxlen = min(len(max(meas, key=lambda e: len(e[2]))[2]), COLUMNS // 3)
 
     return start, end - start, labelmaxlen
@@ -173,7 +196,7 @@ def fmttime(t: int) -> str:
             return s
     m = math.log10(t)
     mor = int(m / 3)
-    d = 10**(mor * 3)
+    d = 10 ** (mor * 3)
     tf = t / d
     frac = 2 - (int(m) - mor * 3)
     return f'{s}{tf:.{frac}f}{["n","µ","m",""][mor]}s'
@@ -200,7 +223,7 @@ def get_bar_string(from_t: int, to_t: int, total_t:int, labelwidth: int, fg: str
         res = f'{"":{pos_leadfrac}}'
         res += fg
         res += INITIAL_FRACTION[leadfrac]
-        res += f'\x1b[7m{tfmt:^{nfull}}\x1b[27m'
+        res += INVERSE + f'{tfmt:^{nfull}}' + INVERSE_OFF
         res += TRAILING_FRACTION[tailfrac]
         res += COLOR_OFF + bg
     elif labelwidth + 1 + pos_leadfrac + nleadfrac + nfull + ntailfrac + 1 + len(tfmt) > COLUMNS:
