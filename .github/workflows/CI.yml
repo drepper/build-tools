@@ -22,7 +22,7 @@ jobs:
       - name: Run tests
         run: |
           pylint --version
-          pylint build-timing.py
+          pylint --rcfile .pylintrc-3.0 build-timing.py
           bash -n launcher.sh
           shellcheck launcher.sh
           bash -n launcher-ark.sh
