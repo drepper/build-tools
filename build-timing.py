@@ -116,8 +116,16 @@ def determine_path(argv: List[str]) -> pathlib.Path:
     if not possible:
         possible = find_buildfile(pathlib.Path('.'), False) or find_buildfile(pathlib.Path('.'), True)
         if not possible:
-            print('*** no build directory found')
-            sys.exit(1)
+            if pathlib.Path('CMakeLists.txt').exists() and not pathlib.Path('build').exists():
+                r = subprocess.run(['cmake', '-S', '.', '-B', 'build'])
+                if r.returncode != 0:
+                    print('*** cmake failed')
+                    sys.exit(1)
+                path = pathlib.Path('build')
+                possible = find_buildfile(path, False)
+            else:
+                print('*** no build directory found')
+                sys.exit(1)
     if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
         print('*** Ninja Multi-Config not supported')
         sys.exit(1)
