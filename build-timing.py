@@ -66,6 +66,10 @@ COLOR_OFF = '\x1b[0m'
 INVERSE = '\x1b[7m'
 INVERSE_OFF = '\x1b[27m'
 
+COLOR_LOWEST = (255, 255, 0)
+COLOR_MEDIAN = (0, 255, 0)
+COLOR_HIGHEST = (255, 0, 0)
+
 COLUMNS, _ = os.get_terminal_size()
 
 @enum.unique
@@ -292,6 +296,13 @@ def percent(v: float) -> int:
     return int(v * 100 + 0.5)
 
 
+def lerp_color(start: Tuple[int, int, int], end: Tuple[int, int, int], t: float) -> str:
+    """Linearly interpolate between two colors."""
+    t = max(0, min(1, t))
+    lerps = list(int(start[i] + (end[i] - start[i]) * t) for i in range(3))
+    return ';'.join(str(l) for l in lerps)
+
+
 def main(argv: List[str]) -> None:
     """Main function of the script."""
     meas = run(argv)
@@ -316,9 +327,9 @@ def main(argv: List[str]) -> None:
     for i, c in enumerate(coords):
         bg = COLOR_BG if i % 2 else ''
         if c[1] - c[0] <= median:
-            fg = f'\x1b[38;2;{int(255 * (c[1] - c[0]) / median)};255;0m'
+            fg = f'\x1b[38;2;{lerp_color(COLOR_LOWEST, COLOR_MEDIAN, (c[1] - c[0]) / median)}m'
         else:
-            fg = f'\x1b[38;2;255;{max(0, int(255 * (1 - (c[1] - c[0] - median) / median)))};0m'
+            fg = f'\x1b[38;2;{lerp_color(COLOR_MEDIAN, COLOR_HIGHEST, (c[1] - c[0] - median) / median)}m'
         print(f'{bg}{c[2][-labelwidth:]:>{labelwidth}} {get_bar_string(c[0], c[1], c[3], labelwidth, fg, bg)}\x1b[0K\x1b[0m')
 
     totalfmt = f' {COLOR_EMPH}{fmttime(to_ns(duration))}{COLOR_OFF} '
