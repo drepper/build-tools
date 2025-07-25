@@ -25,7 +25,7 @@ jobs:
           pylint --rcfile .pylintrc-3.0 build-timing.py
           bash -n launcher.sh
           shellcheck launcher.sh
-          bash -n launcher-ark.sh
+          bash -n launcher-ar.sh
           shellcheck launcher-ar.sh
           bash -n launcher-bison.sh
           shellcheck launcher-bison.sh
