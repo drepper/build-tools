@@ -21,7 +21,7 @@ jobs:
           sudo apt-get -y install pylint shellcheck
       - name: Run tests
         run: |
-          pylink --version
+          pylint --version
           pylint build-timing.py
           bash -n launcher.sh
           shellcheck launcher.sh
