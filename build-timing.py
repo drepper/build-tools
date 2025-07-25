@@ -117,9 +117,10 @@ def determine_path(argv: List[str]) -> pathlib.Path:
         possible = find_buildfile(pathlib.Path('.'), False) or find_buildfile(pathlib.Path('.'), True)
         if not possible:
             if pathlib.Path('CMakeLists.txt').exists() and not pathlib.Path('build').exists():
-                r = subprocess.run(['cmake', '-S', '.', '-B', 'build'])
-                if r.returncode != 0:
-                    print('*** cmake failed')
+                try:
+                    subprocess.run(['cmake', '-S', '.', '-B', 'build'], check=True)
+                except subprocess.CalledProcessError as e:
+                    print(f'*** cmake failed with error code {e.returncode}')
                     sys.exit(1)
                 path = pathlib.Path('build')
                 possible = find_buildfile(path, False)
@@ -164,9 +165,10 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
 
     with tempfile.NamedTemporaryFile("w+") as tf:
         c_builddir = [] if genpath.parent == pathlib.Path('') else ['-C', str(genpath.parent)]
-        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', GENERATOR_BINARIES[generator]] + c_builddir + argv)
-        if r != 0:
-            sys.exit(r)
+        try:
+            subprocess.run(["env", f'MAKE_TIMING_OUTPUT={tf.name}', GENERATOR_BINARIES[generator]] + c_builddir + argv, check=True)
+        except subprocess.CalledProcessError as e:
+            sys.exit(e.returncode)
 
         name_encode = obs if os.getenv("MAKE_TIMING_NAMEOBS") else idfct
         res = [(float(l[0]), float(l[1]), name_encode(l[2])) for l in [l.split() for l in tf.readlines()]]

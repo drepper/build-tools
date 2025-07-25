@@ -31,6 +31,11 @@ The instrumention of the programs run during the buid process does not happen
 automatically and gaps in the recording could (but not necessarily do) mean that
 something is not recorded.
 
+If the project uses Cmake but is not configured yet, the script will run `cmake`, set up
+the build directory, and then continue to build the project.  The build directory will
+be `build` in the current directory.  If a directory with that name exists but is not
+at all or incompletely configured as a build directory, nothing will be done.
+
 
 What to do
 ----------
