@@ -1,6 +1,9 @@
 build-tools
 ===========
 
+[![Build Status](https://github.com/drepper/build-tools/workflows/CI/badge.svg)](https://github.com/drepper/build-tools/actions)
+[![License: CC BY-NC-ND 4.0](extra/License-CC_BY--NC--ND_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
+
 This is just a collection of tools which can be used in projects using `cmake` or
 `make`/`ninja` directly to analyze the build process.  Specifically, the execution of
 the invoked programs is tracked and then shown mapped to the total time of the
