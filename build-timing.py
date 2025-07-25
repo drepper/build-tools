@@ -5,6 +5,7 @@
 """Build script with invokes the generator configure for the project.  If the CMakeFiles.txt file
 is appropriately modified by using the provided launcher script the script collects build times
 and in the end shows a timeline for the build process."""
+import enum
 import hashlib
 import math
 import operator
@@ -67,6 +68,17 @@ INVERSE_OFF = '\x1b[27m'
 
 COLUMNS, _ = os.get_terminal_size()
 
+@enum.unique
+class GENERATORS(enum.Enum):
+    "The supported generators.  The list is determined by cmake."
+    MAKE = enum.auto()
+    NINJA = enum.auto()
+
+GENERATOR_BINARIES = {
+    GENERATORS.MAKE: os.getenv('MAKE') or 'make',
+    GENERATORS.NINJA: os.getenv('NINJA') or 'ninja',
+}
+
 
 def idfct(s: str) -> str:
     "Identity function"
@@ -121,16 +133,26 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
     genpath = determine_path(argv)
 
     if genpath.name == 'Makefile':
-        generator = os.getenv("MAKE") or 'make'
+        generator = GENERATORS.MAKE
     elif genpath.name == 'build.ninja':
-        generator = os.getenv("NINJA") or 'ninja'
+        generator = GENERATORS.NINJA
     else:
         print(f'*** cannot determine generator for building in {genpath.parent}')
         sys.exit(1)
 
+    # Since it might not be clear to the user when the script is started whether make or ninja is used
+    # it is problematic to always require parallel builds.  A build using make requires a -j parameter.
+    # Passing this it ninja fails.  This loop removes the -j for builds when ninja is used.  This way
+    # -j can be passed whenever parallel builds are wanted.
+    if generator == GENERATORS.NINJA:
+        for i, arg in enumerate(argv):
+            if arg.startswith('-j'):
+                del argv[i]
+                break
+
     with tempfile.NamedTemporaryFile("w+") as tf:
         c_builddir = [] if genpath.parent == pathlib.Path('') else ['-C', str(genpath.parent)]
-        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', generator] + c_builddir + argv)
+        r = subprocess.call(["env", f'MAKE_TIMING_OUTPUT={tf.name}', GENERATOR_BINARIES[generator]] + c_builddir + argv)
         if r != 0:
             sys.exit(r)
 
