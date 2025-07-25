@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Get dependencies
+        run: |
+          sudo apt update
+          sudo apt-get -y install pylint3 shellcheck
+      - name: Run tests
+        run: |
+          pylint3 build-timing.py
+          bash -n launcher.sh
+          shellcheck launcher.sh
+          bash -n launcher-ark.sh
+          shellcheck launcher-ar.sh
+          bash -n launcher-bison.sh
+          shellcheck launcher-bison.sh
+          bash -n launcher-flex.sh
+          shellcheck launcher-flex.sh
