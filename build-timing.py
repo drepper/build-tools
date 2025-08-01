@@ -164,9 +164,18 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
                 break
 
     with tempfile.NamedTemporaryFile("w+") as tf:
-        c_builddir = [] if genpath.parent == pathlib.Path('') else ['-C', str(genpath.parent)]
+        # Construct the command line.
+        cmdline = ["env"]
+        cmdline.append(f'MAKE_TIMING_OUTPUT={tf.name}')
+        # XYZ Make this optional?
+        cmdline.append('CTEST_OUTPUT_ON_FAILURE=1')
+        cmdline.append(GENERATOR_BINARIES[generator])
+        if genpath.parent != pathlib.Path(''):
+            cmdline += ['-C', str(genpath.parent)]
+        cmdline += argv
+
         try:
-            subprocess.run(["env", f'MAKE_TIMING_OUTPUT={tf.name}', GENERATOR_BINARIES[generator]] + c_builddir + argv, check=True)
+            subprocess.run(cmdline, check=True)
         except subprocess.CalledProcessError as e:
             sys.exit(e.returncode)
 
