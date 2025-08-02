@@ -116,7 +116,7 @@ def obs(s: str) -> str:
 
 def find_buildfile(path: pathlib.Path, all_dirs: bool) -> List[pathlib.Path]:
     "Find build files (Makefile, build*.ninja) in current or all subdirs."
-    return list(path.glob(f'{'*/' if all_dirs else ''}Makefile')) + list(path.glob(f'{'*/' if all_dirs else ''}build*.ninja'))
+    return list(path.glob(f'{'*/' if all_dirs else ''}Makefile')) + list(path.glob(f'{'*/' if all_dirs else ''}build.ninja'))
 
 
 def determine_path(argv: List[str]) -> pathlib.Path:
@@ -147,9 +147,6 @@ def determine_path(argv: List[str]) -> pathlib.Path:
             else:
                 print('*** no build directory found')
                 sys.exit(1)
-    if any(f for f in possible if f.name not in ('Makefile', 'build.ninja')):
-        print('*** Ninja Multi-Config not supported')
-        sys.exit(1)
     if len(possible) != 1:
         builddirs = set(f.parent for f in possible)
         if len(builddirs) != 1:
