@@ -56,6 +56,26 @@ SMALL_FRACTION = [
 FULL = '█'
 
 
+# Glyphs used for the histogram
+use_braille = False
+def get_graphdots():
+    if use_braille:
+        return [
+            ' ', '⡀', '⡄', '⡆', '⡇',
+            '⢀', '⣀', '⣄', '⣆', '⣇',
+            '⢠', '⣠', '⣤', '⣦', '⣧',
+            '⢰', '⣰', '⣴', '⣶', '⣷',
+            '⢸', '⣸', '⣼', '⣾', '⣿'
+        ]
+    else:
+        return [
+            ' ', '🬏', '🬓', '▌',
+            '🬞', '🬭', '🬱', '🬲',
+            '🬦', '🬵', '🬹', '🬺',
+            '▐', '🬷 ', '🬻', '█'
+        ]
+
+
 assert len(TRAILING_FRACTION) == len(INITIAL_FRACTION)
 assert len(TRAILING_FRACTION) == len(SMALL_FRACTION)
 NFRAC = len(TRAILING_FRACTION)
@@ -153,6 +173,12 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
         print(f'*** cannot determine generator for building in {genpath.parent}')
         sys.exit(1)
 
+    # Maybe it is useful to switch the representation of the histogram.
+    if '--braille' in argv:
+        global use_braille
+        use_braille = True
+        argv.remove('--braille')
+
     # Since it might not be clear to the user when the script is started whether make or ninja is used
     # it is problematic to always require parallel builds.  A build using make requires a -j parameter.
     # Passing this it ninja fails.  This loop removes the -j for builds when ninja is used.  This way
@@ -189,7 +215,7 @@ def get_limits(meas: List[Tuple[float, float, str]]) -> Tuple[float, float, int]
     """Determine start and end time for the recordings and the longest output file name."""
     start = min(meas, key=operator.itemgetter(0))[0]
     end = max(meas, key=operator.itemgetter(1))[1]
-    labelmaxlen = min(len(max(meas, key=lambda e: len(e[2]))[2]), COLUMNS // 3)
+    labelmaxlen = max(min(len(max(meas, key=lambda e: len(e[2]))[2]), COLUMNS // 3), 20)
 
     return start, end - start, labelmaxlen
 
@@ -209,7 +235,7 @@ def getcoord(m: Tuple[float, float, str], start: float, stepsize: float) -> Tupl
     return map_to_step(m[0], start, stepsize), map_to_step(m[1], start, stepsize), m[2], to_ns(m[1] - m[0])
 
 
-def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) -> Tuple[int, float, float]:
+def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) -> Tuple[int, float, float, List[int]]:
     """The returned tuple contains a number of values computed from the individual tool runtimes mapped to the
     graph grid:
     - the number of time steps which have any activity
@@ -220,15 +246,16 @@ def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) ->
     ts = []
 
     for c in coords:
-        efficient[c[0]:c[1]] += map(int, busy[c[0]:c[1]])
-        busy[c[0]:c[1]] = [True] * (c[1] - c[0])
+        for t in range(c[0], c[1]):
+            efficient[t] += int(busy[t])
+            busy[t] = True
         ts.append(c[1] - c[0])
 
     ts.sort()
     lts = len(ts) // 2
     median = (ts[lts] + ts[~lts]) / 2
 
-    return sum(busy), sum(efficient) / nsteps, median
+    return sum(busy), sum(efficient) / nsteps, median, list(map(operator.add, efficient, busy))
 
 
 def fmttime(t: int) -> str:
@@ -322,6 +349,76 @@ def lerp_color(start: Tuple[int, int, int], end: Tuple[int, int, int], t: float)
     return ';'.join(str(l) for l in lerps)
 
 
+def plot_histogram(labelwidth: int, histogram: List[int], njobs: int, overhead: int, efficiency: int) -> None:
+    """Plot a histogram of utilization."""
+    assert len(histogram) % NFRAC == 0
+
+    # We are using the Sextant blocks or Braille glyphs which have two dots horizontally
+    nhdots = 2
+    assert NFRAC % nhdots == 0
+    factor_x = NFRAC // nhdots
+
+    nhorz = len(histogram) // factor_x
+    reduced = list(map(lambda idx: round(sum(histogram[idx * factor_x:(idx + 1) * factor_x]) / factor_x), range(nhorz)))
+    maxval = max(reduced)
+    assert maxval <= njobs
+
+    graphdots = get_graphdots()
+    nvdots = round(math.sqrt(len(graphdots))) - 1
+    assert (nvdots + 1) ** 2 == len(graphdots)
+    nvert = round((maxval + nvdots - 1) / nvdots)
+    factor_y = 1
+    min_vert = 4
+    if nvert < min_vert:
+        factor_y = min_vert * nvdots / maxval
+        factor_y = round(factor_y * 2) / 2
+        nvert = round((maxval * factor_y) / nvdots)
+
+    ncpus = os.cpu_count() or njobs
+    maxuse_percent = 100 * maxval / ncpus
+    maxuse_power10 = round(math.log(maxuse_percent, 10)) - 1
+    maxuse_normal = int(maxuse_percent / (10 ** maxuse_power10))
+    maxuse_step = (1 if maxuse_normal < 5 else 5 if maxuse_normal < 20 else 10) * (10 ** maxuse_power10)
+
+    def scaled_y(y: int, ticks: int) -> float:
+        return ((y - 1) * nvdots + ticks) / factor_y
+
+    for y in range(nvert, 0, -1):
+        min_y = scaled_y(y, 0)
+        ls = [min(max(0, round((v - min_y) * factor_y)), nvdots) for v in reduced]
+
+        oklevel = 0.25
+        if min_y >= njobs * oklevel:
+            color = f'\x1b[38;2;{lerp_color(COLOR_LOWEST,COLOR_MEDIAN, (min_y - njobs * oklevel) / (1 - oklevel))}m'
+        else:
+            color = f'\x1b[38;2;{lerp_color(COLOR_HIGHEST, COLOR_LOWEST, min_y / (njobs * oklevel))}m'
+
+        s = color + ''.join(graphdots[ls[i] + (nvdots + 1) * ls[i + 1]] for i in range(0, len(ls), 2)) + COLOR_OFF
+
+        if y == 1:
+            label = '0%▁'
+        else:
+            utilization = [100 * scaled_y(y, i) / ncpus for i in range(nvdots + 1)]
+
+            label = ''
+            for i in range(nvdots):
+                if int(utilization[i] / maxuse_step) != int(utilization[i + 1] / maxuse_step):
+                    ldiff = -(utilization[i] - int(utilization[i + 1] / maxuse_step) * maxuse_step)
+                    hdiff = utilization[i + 1] - int(utilization[i + 1] / maxuse_step) * maxuse_step
+                    sep = ('🬭🬋🬂' if nvdots == 3 else '▂🭺🭸▔')[i + (0 if (i == nvdots - 1 or ldiff < hdiff) else 1)]
+                    label=f'{int(utilization[i + 1] / maxuse_step) * maxuse_step}%{sep}'
+                    break
+
+        if y <= 2:
+            if y == 2:
+                r = f'  overhead {COLOR_EMPH}{overhead}%{COLOR_OFF}'
+            else:
+                r = f'efficiency {COLOR_EMPH}{efficiency}%{COLOR_OFF}'
+            label = f'{r:<{labelwidth + 1 + (len(COLOR_EMPH) + len(COLOR_OFF)) - len(label)}}{label}'
+
+        print(f'{label:>{labelwidth + 1}}{s}')
+
+
 def main(argv: List[str]) -> None:
     """Main function of the script."""
     meas = run(argv)
@@ -338,7 +435,7 @@ def main(argv: List[str]) -> None:
 
     coords = list(map(lambda m: getcoord(m, start, stepsize), meas))
 
-    tbusy, efficiency, median = compute_utilization(coords, nsteps)
+    tbusy, efficiency, median, histogram = compute_utilization(coords, nsteps)
 
     title = f" {COLOR_EMPH}Build Report{COLOR_OFF} "
     print(f'{title:🮁^{COLUMNS + len(COLOR_EMPH) + len(COLOR_OFF)}s}')
@@ -354,8 +451,8 @@ def main(argv: List[str]) -> None:
     totalfmt = f' {COLOR_EMPH}{fmttime(to_ns(duration))}{COLOR_OFF} '
     print(f'{" "*labelwidth} ◀{totalfmt:─^{barwidth - 2 + len(COLOR_EMPH) + len(COLOR_OFF)}}▶')
 
-    print(f'{"overhead":>{labelwidth}} {COLOR_EMPH}{percent(1 - tbusy / nsteps)}%{COLOR_OFF}')
-    print(f'{"efficiency":>{labelwidth}} {COLOR_EMPH}{percent(efficiency)}%{COLOR_OFF}')
+    assert len(histogram) == NFRAC * barwidth
+    plot_histogram(labelwidth, histogram, len(coords), percent(1 - tbusy / nsteps), percent(efficiency))
 
 
 if __name__ == '__main__':
