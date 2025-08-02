@@ -59,6 +59,7 @@ FULL = '█'
 # Glyphs used for the histogram
 use_braille = False
 def get_graphdots():
+    """Get the glyphs to use for the histogram."""
     if use_braille:
         return [
             ' ', '⡀', '⡄', '⡆', '⡇',
@@ -67,13 +68,12 @@ def get_graphdots():
             '⢰', '⣰', '⣴', '⣶', '⣷',
             '⢸', '⣸', '⣼', '⣾', '⣿'
         ]
-    else:
-        return [
-            ' ', '🬏', '🬓', '▌',
-            '🬞', '🬭', '🬱', '🬲',
-            '🬦', '🬵', '🬹', '🬺',
-            '▐', '🬷 ', '🬻', '█'
-        ]
+    return [
+        ' ', '🬏', '🬓', '▌',
+        '🬞', '🬭', '🬱', '🬲',
+        '🬦', '🬵', '🬹', '🬺',
+        '▐', '🬷 ', '🬻', '█'
+    ]
 
 
 assert len(TRAILING_FRACTION) == len(INITIAL_FRACTION)
@@ -175,7 +175,7 @@ def run(argv: List[str]) -> List[Tuple[float,float,str]]:
 
     # Maybe it is useful to switch the representation of the histogram.
     if '--braille' in argv:
-        global use_braille
+        global use_braille # pylint: disable=global-statement
         use_braille = True
         argv.remove('--braille')
 
