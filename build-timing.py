@@ -434,7 +434,9 @@ def main(argv: List[str]) -> None:
 
     tbusy, efficiency, median, histogram = compute_utilization(coords, nsteps)
     try:
-        with open((pathlib.Path(os.getenv("XDG_STATE_HOME")) if os.getenv("XDG_STATE_HOME") else (pathlib.Path.home() / ".local" / "state")) / "build-tools.log", "w") as fd:
+        env = os.getenv("XDG_STATE_HOME")
+        fname = pathlib.Path(env) if env else (pathlib.Path.home() / ".local" / "state")
+        with open(fname / "build-tools.log", "w", encoding="utf8") as fd:
             fd.write(str(histogram))
     except FileNotFoundError:
         # Ignore errors when writing the logging data.
