@@ -433,6 +433,12 @@ def main(argv: List[str]) -> None:
     coords = list(map(lambda m: getcoord(m, start, stepsize), meas))
 
     tbusy, efficiency, median, histogram = compute_utilization(coords, nsteps)
+    try:
+        with open((pathlib.Path(os.getenv("XDG_STATE_HOME")) if os.getenv("XDG_STATE_HOME") else (pathlib.Path.home() / ".local" / "state")) / "build-tools.log", "w") as fd:
+            fd.write(str(histogram))
+    except FileNotFoundError:
+        # Ignore errors when writing the logging data.
+        pass
 
     title = f" {COLOR_EMPH}Build Report{COLOR_OFF} "
     print(f'{title:🮁^{COLUMNS + len(COLOR_EMPH) + len(COLOR_OFF)}s}')
