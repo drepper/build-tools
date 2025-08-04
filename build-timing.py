@@ -352,7 +352,55 @@ def lerp_color(start: Tuple[int, int, int], end: Tuple[int, int, int], t: float)
     return ';'.join(str(int(start[i] + (end[i] - start[i]) * t)) for i in range(len(start)))
 
 
-def plot_histogram(labelwidth: int, histogram: List[int], remaining: List[int], njobs: int, overhead: int, efficiency: int) -> None:
+def quant_time(t: float) -> float:
+    """Determine time quantization for display.  We try to find a reasonable, multiple of 5 or 10, multiple of a unit
+    of time so that we have between 2 and two """
+    if t >= 3_600_000_000_000:
+        # No multi-hour support
+        return t
+    m = int(math.log10(t))
+    ts1 = int(10**m)
+    ts2 = 5 * int(10**(m-1))
+    ideal = 4
+    return (ts1 if abs(int(t / ts1) - ideal) < abs(int(t / ts2) - ideal) else ts2) / t
+
+
+def scaled_y(y: int, ticks: int, nvdots: int, factor_y: float) -> float:
+    """Scale the y coordinate to the count scale."""
+    return ((y - 1) * nvdots + ticks) / factor_y
+
+
+def get_axis_labels(nvert: int, njobs: int, factor_y: float, maxval: float) -> List[str]:
+    """Create the y-axis labels"""
+    graphdots = get_graphdots()
+    nvdots = round(math.sqrt(len(graphdots))) - 1
+
+    ncpus = os.cpu_count() or njobs
+    maxuse_percent = 100 * maxval / ncpus
+    maxuse_power10 = round(math.log(maxuse_percent, 10)) - 1
+    maxuse_normal = int(maxuse_percent / (10 ** maxuse_power10))
+    maxuse_step = (1 if maxuse_normal < 5 else 5 if maxuse_normal < 20 else 10) * (10 ** maxuse_power10)
+
+    res = ['']
+    for y in range(1, nvert + 1):
+        if y == 1:
+            label = '0%▁'
+        else:
+            utilization = [100 * scaled_y(y, i, nvdots, factor_y) / ncpus for i in range(nvdots + 1)]
+
+            label = ''
+            for i in range(nvdots):
+                if int(utilization[i] / maxuse_step) != int(utilization[i + 1] / maxuse_step):
+                    ldiff = -(utilization[i] - int(utilization[i + 1] / maxuse_step) * maxuse_step)
+                    hdiff = utilization[i + 1] - int(utilization[i + 1] / maxuse_step) * maxuse_step
+                    sep = ('🬭🬋🬂' if nvdots == 3 else '▂🭺🭸▔')[i + (0 if (i == nvdots - 1 or ldiff < hdiff) else 1)]
+                    label=f'{int(utilization[i + 1] / maxuse_step) * maxuse_step}%{sep}'
+                    break
+        res.append(label)
+    return res
+
+
+def plot_histogram(labelwidth: int, histogram: List[int], remaining: List[int], duration: float, njobs: int, overhead: int, efficiency: int) -> None:
     """Plot a histogram of utilization."""
     factor_x = NFRAC // NHDOTS
 
@@ -372,23 +420,23 @@ def plot_histogram(labelwidth: int, histogram: List[int], remaining: List[int], 
         factor_y = round(2 * min_vert * nvdots / maxval) / 2
         nvert = round((maxval * factor_y) / nvdots)
 
-    ncpus = os.cpu_count() or njobs
-    maxuse_percent = 100 * maxval / ncpus
-    maxuse_power10 = round(math.log(maxuse_percent, 10)) - 1
-    maxuse_normal = int(maxuse_percent / (10 ** maxuse_power10))
-    maxuse_step = (1 if maxuse_normal < 5 else 5 if maxuse_normal < 20 else 10) * (10 ** maxuse_power10)
+    labels = get_axis_labels(nvert, njobs, factor_y, maxval)
 
-    def scaled_y(y: int, ticks: int) -> float:
-        return ((y - 1) * nvdots + ticks) / factor_y
+    dt = round(len(reduced) * quant_time(duration))
 
     for y in range(nvert, 0, -1):
-        min_y = scaled_y(y, 0)
+        min_y = scaled_y(y, 0, nvdots, factor_y)
         ls = [min(max(0, round((v - min_y) * factor_y)), nvdots) for v in reduced]
 
         oklevel = 0.5
 
         s = ''
+        last_bg_colored = True
         for t in range(0, len(ls), 2):
+            if ((t // dt) % 2 == 1) != last_bg_colored:
+                s += COLOR_OFF if last_bg_colored else COLOR_BG
+                last_bg_colored = not last_bg_colored
+
             if ls[t] + ls[t + 1] > 0:
                 frac = (reduced[t] + reduced[t + 1] + 1) / (remaining_reduced[t] + remaining_reduced[t + 1])
                 if frac >= oklevel:
@@ -398,20 +446,7 @@ def plot_histogram(labelwidth: int, histogram: List[int], remaining: List[int], 
             s += graphdots[ls[t] + (nvdots + 1) * ls[t + 1]]
         s += COLOR_OFF
 
-        if y == 1:
-            label = '0%▁'
-        else:
-            utilization = [100 * scaled_y(y, i) / ncpus for i in range(nvdots + 1)]
-
-            label = ''
-            for i in range(nvdots):
-                if int(utilization[i] / maxuse_step) != int(utilization[i + 1] / maxuse_step):
-                    ldiff = -(utilization[i] - int(utilization[i + 1] / maxuse_step) * maxuse_step)
-                    hdiff = utilization[i + 1] - int(utilization[i + 1] / maxuse_step) * maxuse_step
-                    sep = ('🬭🬋🬂' if nvdots == 3 else '▂🭺🭸▔')[i + (0 if (i == nvdots - 1 or ldiff < hdiff) else 1)]
-                    label=f'{int(utilization[i + 1] / maxuse_step) * maxuse_step}%{sep}'
-                    break
-
+        label = labels[y]
         if y <= 2:
             if y == 2:
                 r = f'  overhead {COLOR_EMPH}{overhead}%{COLOR_OFF}'
@@ -464,7 +499,7 @@ def main(argv: List[str]) -> None:
     print(f'{" "*labelwidth} ◀{totalfmt:─^{barwidth - 2 + len(COLOR_EMPH) + len(COLOR_OFF)}}▶')
 
     assert len(histogram) == NFRAC * barwidth
-    plot_histogram(labelwidth, histogram, remaining, len(coords), percent(1 - tbusy / nsteps), percent(efficiency))
+    plot_histogram(labelwidth, histogram, remaining, duration, len(coords), percent(1 - tbusy / nsteps), percent(efficiency))
 
 
 if __name__ == '__main__':
