@@ -55,6 +55,10 @@ SMALL_FRACTION = [
 # We do not use reverse text most of the time but instead the full block.
 FULL = '█'
 
+assert len(TRAILING_FRACTION) == len(INITIAL_FRACTION)
+assert len(TRAILING_FRACTION) == len(SMALL_FRACTION)
+NFRAC = len(TRAILING_FRACTION)
+
 
 # Glyphs used for the histogram
 use_braille = False
@@ -72,13 +76,12 @@ def get_graphdots():
         ' ', '🬏', '🬓', '▌',
         '🬞', '🬭', '🬱', '🬲',
         '🬦', '🬵', '🬹', '🬺',
-        '▐', '🬷 ', '🬻', '█'
+        '▐', '🬷', '🬻', '█'
     ]
+# We are using the Sextant blocks or Braille glyphs which have two dots horizontally
+NHDOTS = 2
+assert NFRAC % NHDOTS == 0
 
-
-assert len(TRAILING_FRACTION) == len(INITIAL_FRACTION)
-assert len(TRAILING_FRACTION) == len(SMALL_FRACTION)
-NFRAC = len(TRAILING_FRACTION)
 
 COLOR_EMPH = '\x1b[38;5;226m'
 COLOR_BG = '\x1b[48;5;234m'
@@ -232,7 +235,7 @@ def getcoord(m: Tuple[float, float, str], start: float, stepsize: float) -> Tupl
     return map_to_step(m[0], start, stepsize), map_to_step(m[1], start, stepsize), m[2], to_ns(m[1] - m[0])
 
 
-def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) -> Tuple[int, float, float, List[int]]:
+def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) -> Tuple[int, float, float, List[int], List[int]]:
     """The returned tuple contains a number of values computed from the individual tool runtimes mapped to the
     graph grid:
     - the number of time steps which have any activity
@@ -241,18 +244,21 @@ def compute_utilization(coords: List[Tuple[int, int, str, int]], nsteps: int) ->
     busy = [False] * nsteps
     efficient = [0] * nsteps
     ts = []
+    remaining = [len(coords)] * nsteps
 
     for c in coords:
         for t in range(c[0], c[1]):
             efficient[t] += int(busy[t])
             busy[t] = True
+        for t in range(c[1], nsteps):
+            remaining[t] -= 1
         ts.append(c[1] - c[0])
 
     ts.sort()
     lts = len(ts) // 2
     median = (ts[lts] + ts[~lts]) / 2
 
-    return sum(busy), sum(efficient) / nsteps, median, list(map(operator.add, efficient, busy))
+    return sum(busy), sum(efficient) / nsteps, median, list(map(operator.add, efficient, busy)), remaining
 
 
 def fmttime(t: int) -> str:
@@ -341,24 +347,20 @@ def percent(v: float) -> int:
 
 def lerp_color(start: Tuple[int, int, int], end: Tuple[int, int, int], t: float) -> str:
     """Linearly interpolate between two colors."""
+    assert len(start) == len(end)
     t = max(0, min(1, t))
-    lerps = list(int(start[i] + (end[i] - start[i]) * t) for i in range(3))
-    return ';'.join(str(l) for l in lerps)
+    return ';'.join(str(int(start[i] + (end[i] - start[i]) * t)) for i in range(len(start)))
 
 
-def plot_histogram(labelwidth: int, histogram: List[int], njobs: int, overhead: int, efficiency: int) -> None:
+def plot_histogram(labelwidth: int, histogram: List[int], remaining: List[int], njobs: int, overhead: int, efficiency: int) -> None:
     """Plot a histogram of utilization."""
-    assert len(histogram) % NFRAC == 0
+    factor_x = NFRAC // NHDOTS
 
-    # We are using the Sextant blocks or Braille glyphs which have two dots horizontally
-    nhdots = 2
-    assert NFRAC % nhdots == 0
-    factor_x = NFRAC // nhdots
-
-    nhorz = len(histogram) // factor_x
-    reduced = list(map(lambda idx: round(sum(histogram[idx * factor_x:(idx + 1) * factor_x]) / factor_x), range(nhorz)))
+    reduced = list(map(lambda idx: round(sum(histogram[idx * factor_x:(idx + 1) * factor_x]) / factor_x), range(len(histogram) // factor_x)))
     maxval = max(reduced)
     assert maxval <= njobs
+
+    remaining_reduced = list(map(lambda idx: round(sum(remaining[idx * factor_x:(idx + 1) * factor_x]) / factor_x), range(len(histogram) // factor_x)))
 
     graphdots = get_graphdots()
     nvdots = round(math.sqrt(len(graphdots))) - 1
@@ -367,8 +369,7 @@ def plot_histogram(labelwidth: int, histogram: List[int], njobs: int, overhead: 
     factor_y = 1
     min_vert = 4
     if nvert < min_vert:
-        factor_y = min_vert * nvdots / maxval
-        factor_y = round(factor_y * 2) / 2
+        factor_y = round(2 * min_vert * nvdots / maxval) / 2
         nvert = round((maxval * factor_y) / nvdots)
 
     ncpus = os.cpu_count() or njobs
@@ -384,13 +385,18 @@ def plot_histogram(labelwidth: int, histogram: List[int], njobs: int, overhead: 
         min_y = scaled_y(y, 0)
         ls = [min(max(0, round((v - min_y) * factor_y)), nvdots) for v in reduced]
 
-        oklevel = 0.25
-        if min_y >= njobs * oklevel:
-            color = f'\x1b[38;2;{lerp_color(COLOR_LOWEST,COLOR_MEDIAN, (min_y - njobs * oklevel) / (1 - oklevel))}m'
-        else:
-            color = f'\x1b[38;2;{lerp_color(COLOR_HIGHEST, COLOR_LOWEST, min_y / (njobs * oklevel))}m'
+        oklevel = 0.5
 
-        s = color + ''.join(graphdots[ls[i] + (nvdots + 1) * ls[i + 1]] for i in range(0, len(ls), 2)) + COLOR_OFF
+        s = ''
+        for t in range(0, len(ls), 2):
+            if ls[t] + ls[t + 1] > 0:
+                frac = (reduced[t] + reduced[t + 1] + 1) / (remaining_reduced[t] + remaining_reduced[t + 1])
+                if frac >= oklevel:
+                    s += f'\x1b[38;2;{lerp_color(COLOR_LOWEST, COLOR_MEDIAN, (frac - oklevel) / (1 - oklevel))}m'
+                else:
+                    s += f'\x1b[38;2;{lerp_color(COLOR_HIGHEST, COLOR_LOWEST, frac / oklevel)}m'
+            s += graphdots[ls[t] + (nvdots + 1) * ls[t + 1]]
+        s += COLOR_OFF
 
         if y == 1:
             label = '0%▁'
@@ -432,12 +438,13 @@ def main(argv: List[str]) -> None:
 
     coords = list(map(lambda m: getcoord(m, start, stepsize), meas))
 
-    tbusy, efficiency, median, histogram = compute_utilization(coords, nsteps)
+    tbusy, efficiency, median, histogram, remaining = compute_utilization(coords, nsteps)
     try:
         env = os.getenv("XDG_STATE_HOME")
         fname = pathlib.Path(env) if env else (pathlib.Path.home() / ".local" / "state")
         with open(fname / "build-tools.log", "w", encoding="utf8") as fd:
-            fd.write(str(histogram))
+            fd.write(str(histogram) + '\n')
+            fd.write(str(remaining) + '\n')
     except FileNotFoundError:
         # Ignore errors when writing the logging data.
         pass
@@ -457,7 +464,7 @@ def main(argv: List[str]) -> None:
     print(f'{" "*labelwidth} ◀{totalfmt:─^{barwidth - 2 + len(COLOR_EMPH) + len(COLOR_OFF)}}▶')
 
     assert len(histogram) == NFRAC * barwidth
-    plot_histogram(labelwidth, histogram, len(coords), percent(1 - tbusy / nsteps), percent(efficiency))
+    plot_histogram(labelwidth, histogram, remaining, len(coords), percent(1 - tbusy / nsteps), percent(efficiency))
 
 
 if __name__ == '__main__':
