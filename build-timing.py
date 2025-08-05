@@ -362,7 +362,7 @@ def quant_time(t: float) -> float:
     ts1 = int(10**m)
     ts2 = 5 * int(10**(m-1))
     ideal = 4
-    return (ts1 if abs(int(t / ts1) - ideal) < abs(int(t / ts2) - ideal) else ts2) / t
+    return (ts1 if ts2 == 0 or abs(int(t / ts1) - ideal) < abs(int(t / ts2) - ideal) else ts2) / t
 
 
 def scaled_y(y: int, ticks: int, nvdots: int, factor_y: float) -> float:
